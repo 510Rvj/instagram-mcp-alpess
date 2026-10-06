@@ -1,7 +1,9 @@
 [![Verified on MseeP](https://mseep.ai/badge.svg)](https://mseep.ai/app/7bde8131-7019-405f-89d1-cef574a8129a)
 
 [![MSeeP.ai Security Assessment Badge](https://mseep.net/pr/jlbadano-ig-mcp-badge.png)](https://mseep.ai/app/jlbadano-ig-mcp)
-# Instagram MCP Server
+# Instagram MCP ALPESS
+
+> Fork de [jlbadano/ig-mcp](https://github.com/jlbadano/ig-mcp) (MIT), adaptado para o ecossistema ALPESS — mesmo padrão do [`whatsapp-mcp-alpess`](https://github.com/510Rvj/whatsapp-mcp-alpess). Piloto em validação, ainda não testado ao vivo em conta de mentorado.
 
 A Model Context Protocol (MCP) server that provides seamless integration with Instagram's Graph API, enabling AI applications to interact with Instagram Business accounts programmatically.
 
