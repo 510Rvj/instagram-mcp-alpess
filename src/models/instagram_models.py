@@ -305,3 +305,47 @@ class SendDMResponse(BaseModel):
     message_id: str
     recipient_id: str
     success: bool = True
+
+
+class HashtagInfo(BaseModel):
+    """Instagram hashtag identity (id + name)."""
+
+    id: str
+    name: Optional[str] = None
+
+
+class HashtagMedia(BaseModel):
+    """A single media item returned by a hashtag top/recent search."""
+
+    id: str
+    media_type: Optional[MediaType] = None
+    media_url: Optional[str] = None
+    permalink: Optional[str] = None
+    caption: Optional[str] = None
+    like_count: Optional[int] = None
+    comments_count: Optional[int] = None
+    timestamp: Optional[datetime] = None
+
+    @field_validator("timestamp", mode="before")
+    @classmethod
+    def parse_timestamp(cls, v):
+        if isinstance(v, str):
+            return datetime.fromisoformat(v.replace("Z", "+00:00"))
+        return v
+
+
+class BusinessDiscoveryProfile(BaseModel):
+    """Public profile + recent media of another Instagram Business/Creator account.
+
+    Usado para prospecção/análise de concorrência: a Graph API permite olhar o
+    perfil público de QUALQUER conta Business/Creator (não só a própria), sem
+    precisar que ela autorize nada — é a base de "buscar leads" e "analisar
+    viralização de concorrente" pedida no projeto.
+    """
+
+    username: str
+    followers_count: Optional[int] = None
+    media_count: Optional[int] = None
+    biography: Optional[str] = None
+    website: Optional[str] = None
+    media: List[HashtagMedia] = Field(default_factory=list)

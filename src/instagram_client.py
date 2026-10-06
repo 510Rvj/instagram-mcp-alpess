@@ -16,7 +16,10 @@ from PIL import Image
 from .config import get_settings
 from .models.instagram_models import (
     AccountInsight,
+    BusinessDiscoveryProfile,
     FacebookPage,
+    HashtagInfo,
+    HashtagMedia,
     InsightMetric,
     InsightPeriod,
     InstagramConversation,
@@ -669,6 +672,116 @@ class InstagramClient:
         except Exception as e:
             logger.error("Failed to send DM", error=str(e), recipient=request.recipient_id)
             raise InstagramAPIError(f"Failed to send DM: {str(e)}")
+
+    async def search_hashtag(self, hashtag_name: str) -> HashtagInfo:
+        """
+        Resolve a hashtag name to its Graph API hashtag ID.
+
+        Pré-requisito para hashtag_top_media/hashtag_recent_media — a API exige
+        o ID, não o nome. Precisa de `instagram_basic` + conta Business/Creator;
+        o próprio Business Account ID é usado como `user_id` da busca.
+        """
+        account_id = self.settings.instagram_business_account_id
+        if not account_id:
+            raise InstagramAPIError("Instagram business account ID not configured")
+
+        params = {"user_id": account_id, "q": hashtag_name}
+
+        try:
+            data = await self._make_request(
+                "GET", "ig_hashtag_search", params=params, use_facebook_api=True
+            )
+            results = data.get("data", [])
+            if not results:
+                raise InstagramAPIError(f"Hashtag not found: {hashtag_name}")
+            return HashtagInfo(id=results[0]["id"], name=hashtag_name)
+        except InstagramAPIError:
+            raise
+        except Exception as e:
+            logger.error("Failed to search hashtag", error=str(e), hashtag=hashtag_name)
+            raise InstagramAPIError(f"Failed to search hashtag: {str(e)}")
+
+    async def _get_hashtag_media(
+        self, hashtag_id: str, edge: str, limit: int = 25
+    ) -> List[HashtagMedia]:
+        """Shared implementation for top_media/recent_media (mesmo shape de resposta)."""
+        account_id = self.settings.instagram_business_account_id
+        if not account_id:
+            raise InstagramAPIError("Instagram business account ID not configured")
+
+        fields = [
+            "id", "media_type", "media_url", "permalink",
+            "caption", "like_count", "comments_count", "timestamp",
+        ]
+        params = {
+            "user_id": account_id,
+            "fields": ",".join(fields),
+            "limit": min(limit, 50),
+        }
+
+        try:
+            data = await self._make_request(
+                "GET", f"{hashtag_id}/{edge}", params=params, use_facebook_api=True
+            )
+            return [HashtagMedia(**item) for item in data.get("data", [])]
+        except Exception as e:
+            logger.error(f"Failed to get hashtag {edge}", error=str(e), hashtag_id=hashtag_id)
+            raise InstagramAPIError(f"Failed to get hashtag {edge}: {str(e)}")
+
+    async def get_hashtag_top_media(self, hashtag_id: str, limit: int = 25) -> List[HashtagMedia]:
+        """Top (ranked) media for a hashtag — base de análise de viralização por nicho."""
+        return await self._get_hashtag_media(hashtag_id, "top_media", limit)
+
+    async def get_hashtag_recent_media(self, hashtag_id: str, limit: int = 25) -> List[HashtagMedia]:
+        """Most recent media for a hashtag (janela de ~24h)."""
+        return await self._get_hashtag_media(hashtag_id, "recent_media", limit)
+
+    async def business_discovery(
+        self, target_username: str, media_limit: int = 10
+    ) -> BusinessDiscoveryProfile:
+        """
+        Look up ANOTHER Instagram Business/Creator account's public profile + media.
+
+        Não exige autorização da conta-alvo (é dado público via Graph API) — é a
+        peça que sustenta "buscar leads"/"analisar concorrente" sem precisar que
+        a outra conta nos dê acesso. Exige só `instagram_basic` na NOSSA conta.
+        """
+        account_id = self.settings.instagram_business_account_id
+        if not account_id:
+            raise InstagramAPIError("Instagram business account ID not configured")
+
+        media_fields = "id,media_type,media_url,permalink,caption,like_count,comments_count,timestamp"
+        fields = (
+            f"business_discovery.username({target_username})"
+            f"{{username,followers_count,media_count,biography,website,"
+            f"media.limit({min(media_limit, 50)}){{{media_fields}}}}}"
+        )
+        params = {"fields": fields}
+
+        try:
+            data = await self._make_request(
+                "GET", account_id, params=params, use_facebook_api=True
+            )
+            bd = data.get("business_discovery")
+            if not bd:
+                raise InstagramAPIError(
+                    f"'{target_username}' não é uma conta Business/Creator pública "
+                    "(business discovery só funciona com contas profissionais)"
+                )
+            media_items = [HashtagMedia(**m) for m in bd.get("media", {}).get("data", [])]
+            return BusinessDiscoveryProfile(
+                username=bd.get("username", target_username),
+                followers_count=bd.get("followers_count"),
+                media_count=bd.get("media_count"),
+                biography=bd.get("biography"),
+                website=bd.get("website"),
+                media=media_items,
+            )
+        except InstagramAPIError:
+            raise
+        except Exception as e:
+            logger.error("Failed business discovery", error=str(e), target=target_username)
+            raise InstagramAPIError(f"Failed business discovery: {str(e)}")
 
     def get_rate_limit_info(self) -> RateLimitInfo:
         """Get current rate limit information."""

@@ -305,6 +305,76 @@ class InstagramMCPServer:
                         "required": ["recipient_id", "message"],
                     },
                 ),
+                Tool(
+                    name="search_hashtag",
+                    description=(
+                        "Resolve a hashtag name (without #) to its Graph API ID. "
+                        "Required before hashtag_top_media/hashtag_recent_media. "
+                        "Base para análise de viralização por nicho/concorrente."
+                    ),
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "hashtag_name": {
+                                "type": "string",
+                                "description": "Hashtag without the # symbol, e.g. 'mentoria'",
+                            },
+                        },
+                        "required": ["hashtag_name"],
+                    },
+                ),
+                Tool(
+                    name="hashtag_top_media",
+                    description=(
+                        "Get top-ranked media for a hashtag ID (use search_hashtag first). "
+                        "Useful to find what content is going viral in a niche."
+                    ),
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "hashtag_id": {"type": "string", "description": "ID from search_hashtag"},
+                            "limit": {"type": "integer", "description": "Max items (default 25, max 50)"},
+                        },
+                        "required": ["hashtag_id"],
+                    },
+                ),
+                Tool(
+                    name="hashtag_recent_media",
+                    description=(
+                        "Get most recent media (~24h window) for a hashtag ID (use search_hashtag first)."
+                    ),
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "hashtag_id": {"type": "string", "description": "ID from search_hashtag"},
+                            "limit": {"type": "integer", "description": "Max items (default 25, max 50)"},
+                        },
+                        "required": ["hashtag_id"],
+                    },
+                ),
+                Tool(
+                    name="business_discovery",
+                    description=(
+                        "Look up ANY other Instagram Business/Creator account's public profile "
+                        "(followers, bio, recent media with likes/comments) WITHOUT needing their "
+                        "authorization — it's public data via Graph API. Base para prospecção de "
+                        "leads e análise de concorrente/perfil de referência."
+                    ),
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "target_username": {
+                                "type": "string",
+                                "description": "Username (without @) of the account to look up — must be Business/Creator",
+                            },
+                            "media_limit": {
+                                "type": "integer",
+                                "description": "Max recent media items to include (default 10, max 50)",
+                            },
+                        },
+                        "required": ["target_username"],
+                    },
+                ),
             ]
 
         @self.server.call_tool()
@@ -492,6 +562,44 @@ class InstagramMCPServer:
                             "timestamp": datetime.utcnow().isoformat(),
                             "note": "24-hour response window applies. Requires Advanced Access."
                         },
+                    )
+
+                elif name == "search_hashtag":
+                    hashtag = await instagram_client.search_hashtag(arguments["hashtag_name"])
+                    result = MCPToolResult(
+                        success=True,
+                        data=hashtag.model_dump(mode='json'),
+                        metadata={"tool": name, "timestamp": datetime.utcnow().isoformat()},
+                    )
+
+                elif name == "hashtag_top_media":
+                    media = await instagram_client.get_hashtag_top_media(
+                        arguments["hashtag_id"], arguments.get("limit", 25)
+                    )
+                    result = MCPToolResult(
+                        success=True,
+                        data={"media": [m.model_dump(mode='json') for m in media], "count": len(media)},
+                        metadata={"tool": name, "timestamp": datetime.utcnow().isoformat()},
+                    )
+
+                elif name == "hashtag_recent_media":
+                    media = await instagram_client.get_hashtag_recent_media(
+                        arguments["hashtag_id"], arguments.get("limit", 25)
+                    )
+                    result = MCPToolResult(
+                        success=True,
+                        data={"media": [m.model_dump(mode='json') for m in media], "count": len(media)},
+                        metadata={"tool": name, "timestamp": datetime.utcnow().isoformat()},
+                    )
+
+                elif name == "business_discovery":
+                    profile = await instagram_client.business_discovery(
+                        arguments["target_username"], arguments.get("media_limit", 10)
+                    )
+                    result = MCPToolResult(
+                        success=True,
+                        data=profile.model_dump(mode='json'),
+                        metadata={"tool": name, "timestamp": datetime.utcnow().isoformat()},
                     )
 
                 else:
